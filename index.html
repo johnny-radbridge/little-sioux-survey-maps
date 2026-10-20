@@ -243,20 +243,18 @@ if(typeof L!=='undefined'){
   l.options.pane='survey'+geometryKind(f);
   const p=f.properties,tip=document.createElement('span');tip.textContent=tooltipText(f);
   l.bindTooltip(tip,{sticky:true});
-  if(question.number===16){
+  {
    const content=document.createElement('div');content.className='feature-popup';
    const heading=document.createElement('div');heading.className='feature-popup-heading';
-   const dot=document.createElement('span');dot.className='feature-popup-dot';dot.style.background=p.color;
+   const dot=document.createElement('span');dot.className='feature-popup-dot';dot.style.background=question.number===16?p.color:color(p.count);
    const title=document.createElement('strong');title.textContent=p.name;heading.append(dot,title);content.append(heading);
-   const category=question.categories.find(c=>c.id===p.id);
-   const labels=(p.subtypes||[]).map(id=>category?.subtopics.find(s=>s.id===id)?.name).filter(Boolean);
+   const category=question.categories?.find(c=>c.id===p.id);
+   const labels=question.number===16?(p.subtypes||[]).map(id=>category?.subtopics.find(s=>s.id===id)?.name).filter(Boolean):[p.count+' '+(p.count===1?'selection':'selections')];
    for(const label of labels.length?labels:['No subtopic selected']){
     const item=document.createElement('div');item.className='feature-popup-item';item.textContent=label;content.append(item);
    }
    l.bindPopup(content,{minWidth:260,maxWidth:340,closeButton:true,autoClose:true,closeOnClick:true,autoPan:true});
    l.on('popupopen',()=>l.closeTooltip());
-  }else{
-   l.on('click',()=>{select(p.id);buttons.get(p.id)?.scrollIntoView({block:'nearest'});});
   }
  }}).addTo(map);
  L.control.scale({imperial:true,metric:false}).addTo(map);
