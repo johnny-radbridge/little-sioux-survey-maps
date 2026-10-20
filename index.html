@@ -92,13 +92,6 @@ const buttons=new Map(),palette=['#fff0b3','#ffc65c','#f88b36','#dc462b','#9d183
 const enabledGeometry={Polygons:true,Lines:true,Points:true};
 const geometryKind=f=>/Polygon/.test(f.geometry.type)?'Polygons':/LineString/.test(f.geometry.type)?'Lines':'Points';
 const geometryAllowed=f=>question.number!==16||enabledGeometry[geometryKind(f)];
-function tooltipText(f){
- const p=f.properties;
- if(question.number!==16)return p.name+' · '+p.count;
- const category=question.categories.find(c=>c.id===p.id);
- const labels=(p.subtypes||[]).map(id=>category?.subtopics.find(s=>s.id===id)?.name).filter(Boolean);
- return labels.length?labels.join(' · '):'No subtopic selected';
-}
 const geometryControls=document.createElement('div');geometryControls.className='geometry-controls';geometryControls.setAttribute('role','group');geometryControls.setAttribute('aria-label','Map geometry visibility');
 for(const name of Object.keys(enabledGeometry)){
  const button=document.createElement('button');button.type='button';button.textContent=name;button.setAttribute('aria-label',name);button.dataset.geometry=name;
@@ -159,6 +152,24 @@ function geometryInView(geometry,bounds){
   default:return false;
  }
 }
+let activeDetail=null,pinnedDetail=null,detailCloseTimer=null;
+function cancelDetailClose(){clearTimeout(detailCloseTimer);detailCloseTimer=null;}
+function closeHoverDetail(popup){
+ cancelDetailClose();
+ detailCloseTimer=setTimeout(()=>{if(activeDetail===popup&&pinnedDetail!==popup)map.closePopup(popup);},160);
+}
+function openDetail(popup,latlng,pin=false){
+ cancelDetailClose();
+ if(!pin&&pinnedDetail)return;
+ if(activeDetail!==popup){
+  if(activeDetail)map.closePopup(activeDetail);
+  activeDetail=popup;
+ }
+ if(pin)pinnedDetail=popup;
+ popup.options.autoPan=pin;
+ popup.setLatLng(latlng).openOn(map);
+}
+
 let viewFeatures=[];
 function updateViewport(){
  viewFeatures=map&&layer?question.features.filter(f=>geometryAllowed(f)&&geometryInView(f.geometry,map.getBounds())):question.features.filter(geometryAllowed);
@@ -241,8 +252,7 @@ if(typeof L!=='undefined'){
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
  layer=L.geoJSON(null,{style,pointToLayer:(f,latlng)=>L.circleMarker(latlng,{...style(f),pane:'surveyPoints',radius:6,weight:1.2,color:'#fff',fillOpacity:.85}),onEachFeature:(f,l)=>{
   l.options.pane='survey'+geometryKind(f);
-  const p=f.properties,tip=document.createElement('span');tip.textContent=tooltipText(f);
-  l.bindTooltip(tip,{sticky:true});
+  const p=f.properties;
   {
    const content=document.createElement('div');content.className='feature-popup';
    const heading=document.createElement('div');heading.className='feature-popup-heading';
@@ -253,8 +263,20 @@ if(typeof L!=='undefined'){
    for(const label of labels.length?labels:['No subtopic selected']){
     const item=document.createElement('div');item.className='feature-popup-item';item.textContent=label;content.append(item);
    }
-   l.bindPopup(content,{minWidth:260,maxWidth:340,closeButton:true,autoClose:true,closeOnClick:true,autoPan:true});
-   l.on('popupopen',()=>l.closeTooltip());
+   const popup=L.popup({minWidth:260,maxWidth:340,closeButton:true,autoClose:true,closeOnClick:true,autoPan:false}).setContent(content);
+   popup.on('add',()=>{
+    const el=popup.getElement();
+    el.addEventListener('mouseenter',cancelDetailClose);
+    el.addEventListener('mouseleave',()=>closeHoverDetail(popup));
+   });
+   popup.on('remove',()=>{
+    if(activeDetail===popup)activeDetail=null;
+    if(pinnedDetail===popup)pinnedDetail=null;
+   });
+   l.on('mouseover',event=>openDetail(popup,event.latlng));
+   l.on('mouseout',()=>closeHoverDetail(popup));
+   l.on('click',event=>openDetail(popup,event.latlng,true));
+   l.on('remove',()=>{if(activeDetail===popup)map.closePopup(popup);});
   }
  }}).addTo(map);
  L.control.scale({imperial:true,metric:false}).addTo(map);
