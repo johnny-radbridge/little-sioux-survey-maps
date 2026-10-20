@@ -36,6 +36,19 @@ h1{font-size:clamp(22px,2.4vw,34px);line-height:1.16;letter-spacing:-.9px;max-wi
  h1{font-size:24px;margin-bottom:10px}
 }
 
+.map-heading{align-items:center;flex-wrap:wrap;gap:8px 16px}
+.map-heading>p{flex:1;min-width:180px}
+.map-actions{display:flex;align-items:center;gap:14px;margin-left:auto;flex-wrap:wrap}
+.geometry-controls{display:flex;gap:5px}
+.geometry-controls[hidden]{display:none}
+.geometry-controls button{font:inherit;font-size:12px;font-weight:600;border:1px solid #b9ccef;border-radius:4px;background:#edf3ff;color:#154ec9;padding:6px 9px;cursor:pointer;white-space:nowrap}
+.geometry-controls button::before{content:'✓';display:inline-block;width:13px;margin-right:4px}
+.geometry-controls button[aria-pressed=false]{background:#fff5f5;border-color:#e9bcbc;color:#a74444}
+.geometry-controls button[aria-pressed=false]::before{content:'−'}
+.geometry-controls button:hover{border-color:#7189b6}
+.leaflet-tooltip{max-width:280px;white-space:normal;line-height:1.5}
+@media(max-width:760px){.map-actions{gap:8px}.geometry-controls button{padding:4px 7px;font-size:11px}}
+
 </style>
 </head>
 <body>
@@ -62,6 +75,31 @@ const questions=window.SURVEY_MAP_DATA;
 const list=document.getElementById('list'),status=document.getElementById('status'),clear=document.getElementById('clear'),all=document.getElementById('all');
 let question,selected=null,selectedSubtype=null,map,layer,legend,rows,breaks;
 const buttons=new Map(),palette=['#fff0b3','#ffc65c','#f88b36','#dc462b','#9d183b'];
+const enabledGeometry={Polygons:true,Lines:true,Points:true};
+const geometryKind=f=>/Polygon/.test(f.geometry.type)?'Polygons':/LineString/.test(f.geometry.type)?'Lines':'Points';
+const geometryAllowed=f=>question.number!==16||enabledGeometry[geometryKind(f)];
+function tooltipText(f){
+ const p=f.properties;
+ if(question.number!==16)return p.name+' · '+p.count;
+ const category=question.categories.find(c=>c.id===p.id);
+ const labels=(p.subtypes||[]).map(id=>category?.subtopics.find(s=>s.id===id)?.name).filter(Boolean);
+ return labels.length?labels.join(' · '):'No subtopic selected';
+}
+const geometryControls=document.createElement('div');geometryControls.className='geometry-controls';geometryControls.setAttribute('role','group');geometryControls.setAttribute('aria-label','Map geometry visibility');
+for(const name of Object.keys(enabledGeometry)){
+ const button=document.createElement('button');button.type='button';button.textContent=name;button.setAttribute('aria-label',name);button.dataset.geometry=name;
+ button.setAttribute('aria-pressed','true');button.title='Hide '+name.toLowerCase();
+ button.addEventListener('click',()=>{
+  enabledGeometry[name]=!enabledGeometry[name];
+  button.setAttribute('aria-pressed',String(enabledGeometry[name]));
+  button.title=(enabledGeometry[name]?'Hide ':'Show ')+name.toLowerCase();
+  select(selected,selectedSubtype,false);
+ });
+ geometryControls.append(button);
+}
+const mapActions=document.createElement('div');mapActions.className='map-actions';
+clear.before(mapActions);mapActions.append(geometryControls,clear);
+
 function color(count){if(count===0)return '#9da8b6';return palette[breaks.findIndex(n=>count<=n)]||palette[4];}
 function style(f){const p=f.properties,c=question.number===16?p.color:color(p.count);return {color:c,weight:question.number===16?3:4,opacity:1,fillColor:c,fillOpacity:.75};}
 function updateLegend(){
@@ -109,7 +147,7 @@ function geometryInView(geometry,bounds){
 }
 let viewFeatures=[];
 function updateViewport(){
- viewFeatures=map&&layer?question.features.filter(f=>geometryInView(f.geometry,map.getBounds())):question.features;
+ viewFeatures=map&&layer?question.features.filter(f=>geometryAllowed(f)&&geometryInView(f.geometry,map.getBounds())):question.features.filter(geometryAllowed);
  const counts=new Map(),ids=new Set();
  for(const f of viewFeatures){
   const p=f.properties;ids.add(p.id);counts.set(p.id,(counts.get(p.id)||0)+(question.number===16?1:p.count));
@@ -149,15 +187,16 @@ function renderSubtopics(){
  }
  buttons.get(selected).after(group);
 }
-function select(id,subtype=null){
+function select(id,subtype=null,fit=true){
  selected=id;selectedSubtype=subtype;all.setAttribute('aria-pressed',String(id===null));clear.disabled=id===null;
  for(const [key,b]of buttons)b.setAttribute('aria-pressed',String(key===id));
- const features=question.features.filter(f=>(id===null||f.properties.id===id)&&(selectedSubtype===null||f.properties.subtypes?.includes(selectedSubtype)));
- if(layer){layer.clearLayers();layer.addData({type:'FeatureCollection',features});if(layer.getBounds().isValid())map.fitBounds(layer.getBounds(),{padding:[32,32],maxZoom:id===null?11:13,animate:false});}
+ const features=question.features.filter(f=>geometryAllowed(f)&&(id===null||f.properties.id===id)&&(selectedSubtype===null||f.properties.subtypes?.includes(selectedSubtype)));
+ if(layer){layer.clearLayers();layer.addData({type:'FeatureCollection',features});if(fit&&layer.getBounds().isValid())map.fitBounds(layer.getBounds(),{padding:[32,32],maxZoom:id===null?11:13,animate:false});}
  updateViewport();
 }
 function showQuestion(number){
  question=questions.find(q=>q.number===number)||questions[0];selected=null;selectedSubtype=null;
+ geometryControls.hidden=question.number!==16;
  document.querySelector('h1').textContent=question.title;
  document.querySelector('.list-panel').setAttribute('aria-label',question.number===16?'Mapped place categories':'River stretches');
  document.querySelector('.map-panel').setAttribute('aria-label',question.number===16?'Map of places':'Map of selected river stretches');
@@ -183,15 +222,17 @@ for(const b of document.querySelectorAll('nav button'))b.addEventListener('click
 showQuestion(Number(location.hash.replace('#question-',''))||11);
 if(typeof L!=='undefined'){
  map=L.map('map');
+ for(const [name,z]of [['Polygons',410],['Lines',420],['Points',430]])map.createPane('survey'+name).style.zIndex=z;
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
- layer=L.geoJSON(null,{style,pointToLayer:(f,latlng)=>L.circleMarker(latlng,{...style(f),radius:6,weight:1.2,color:'#fff',fillOpacity:.85}),onEachFeature:(f,l)=>{
-  const p=f.properties,tip=document.createElement('span');tip.textContent=p.name+(question.number===16?'':' · '+p.count);
+ layer=L.geoJSON(null,{style,pointToLayer:(f,latlng)=>L.circleMarker(latlng,{...style(f),pane:'surveyPoints',radius:6,weight:1.2,color:'#fff',fillOpacity:.85}),onEachFeature:(f,l)=>{
+  l.options.pane='survey'+geometryKind(f);
+  const p=f.properties,tip=document.createElement('span');tip.textContent=tooltipText(f);
   l.bindTooltip(tip,{sticky:true});
   l.on('click',()=>{select(p.id,selected===p.id?selectedSubtype:null);buttons.get(p.id)?.scrollIntoView({block:'nearest'});});
  }}).addTo(map);
  L.control.scale({imperial:true,metric:false}).addTo(map);
  const Legend=L.Control.extend({options:{position:'bottomright'},onAdd:()=>{legend=L.DomUtil.create('div','legend');L.DomEvent.disableClickPropagation(legend);return legend;}});new Legend().addTo(map);
- const Reset=L.Control.extend({options:{position:'topright'},onAdd:()=>{const wrap=L.DomUtil.create('div','leaflet-bar'),b=L.DomUtil.create('button','map-reset',wrap);b.type='button';b.textContent='⤢';b.title='Fit map';b.setAttribute('aria-label','Fit map');L.DomEvent.disableClickPropagation(wrap);b.addEventListener('click',()=>map.fitBounds(layer.getBounds(),{padding:[32,32],maxZoom:13}));return wrap;}});
+ const Reset=L.Control.extend({options:{position:'topright'},onAdd:()=>{const wrap=L.DomUtil.create('div','leaflet-bar'),b=L.DomUtil.create('button','map-reset',wrap);b.type='button';b.textContent='⤢';b.title='Fit map';b.setAttribute('aria-label','Fit map');L.DomEvent.disableClickPropagation(wrap);b.addEventListener('click',()=>{if(layer.getBounds().isValid())map.fitBounds(layer.getBounds(),{padding:[32,32],maxZoom:13});});return wrap;}});
  new Reset().addTo(map);select(null);
  map.on('moveend resize',updateViewport);
  new ResizeObserver(()=>map.invalidateSize()).observe(document.getElementById('map'));
