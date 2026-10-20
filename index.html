@@ -42,9 +42,9 @@ h1{font-size:clamp(22px,2.4vw,34px);line-height:1.16;letter-spacing:-.9px;max-wi
 .geometry-controls{display:flex;gap:5px}
 .geometry-controls[hidden]{display:none}
 .geometry-controls button{font:inherit;font-size:12px;font-weight:600;border:1px solid #b9ccef;border-radius:4px;background:#edf3ff;color:#154ec9;padding:6px 9px;cursor:pointer;white-space:nowrap}
-.geometry-controls button::before{content:'✓';display:inline-block;width:13px;margin-right:4px}
+
 .geometry-controls button[aria-pressed=false]{background:#fff5f5;border-color:#e9bcbc;color:#a74444}
-.geometry-controls button[aria-pressed=false]::before{content:'−'}
+
 .geometry-controls button:hover{border-color:#7189b6}
 .leaflet-tooltip{max-width:280px;white-space:normal;line-height:1.5}
 @media(max-width:760px){.map-actions{gap:8px}.geometry-controls button{padding:4px 7px;font-size:11px}}
