@@ -48,6 +48,12 @@ h1{font-size:clamp(22px,2.4vw,34px);line-height:1.16;letter-spacing:-.9px;max-wi
 .geometry-controls button:hover{border-color:#7189b6}
 .leaflet-tooltip{max-width:280px;white-space:normal;line-height:1.5}
 @media(max-width:760px){.map-actions{gap:8px}.geometry-controls button{padding:4px 7px;font-size:11px}}
+.map-heading{padding-left:0;padding-right:0}
+.map-actions{flex-wrap:nowrap}
+.map-actions #clear{order:-1}
+#clear:disabled{display:none}
+.geometry-controls button{position:relative}
+.geometry-controls button[aria-pressed=false]::after{content:'';position:absolute;left:50%;top:50%;width:1px;height:115%;background:currentColor;transform:translate(-50%,-50%) rotate(38deg);opacity:.6;pointer-events:none}
 
 </style>
 </head>
